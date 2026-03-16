@@ -1,90 +1,104 @@
-# 스마트 자동 애완사료분배기 - 시스템 블록도
+# AI 기반 반응형 Dog Care 시스템 - 시스템 블록도
 
 ```mermaid
 flowchart TB
-    subgraph APP["스마트폰 앱 (Flutter)"]
-        direction TB
-        A1[강아지 종 선택\n사료량 계산]
-        A2[급여 스케줄 설정]
-        A3[원격 제어 및 모니터링]
+    subgraph INPUT["입력 장치"]
+        I1[카메라\nWebcam]
+        I2[마이크\nMicrophone]
     end
 
-    subgraph CLOUD["통신 레이어"]
+    subgraph PREPROCESS["데이터 전처리"]
+        P1[영상 캡처\nOpenCV]
+        P2[음성 캡처\nPyAudio]
+    end
+
+    subgraph AI["AI 분석 엔진"]
+        direction TB
+        A1[행동 인식 모델\nYOLOv8 / MediaPipe]
+        A2[감정 분류 모델\nCNN Classifier]
+        A3[음성 분석 모듈\n짖음 패턴 인식]
+        A4[(모델 파일\n.pt / .tflite)]
+        A1 & A2 & A3 --- A4
+    end
+
+    subgraph CARE["케어 판단 로직"]
         direction LR
-        C1[Wi-Fi]
-        C2[MQTT Broker\nMosquitto]
+        C1[규칙 기반 판단]
+        C2[AI 추론]
+        C1 <--> C2
     end
 
-    subgraph RPI["Raspberry Pi 5 (MCU)"]
+    subgraph ACTION["케어 실행 모듈"]
         direction TB
-        subgraph SW["소프트웨어"]
-            direction LR
-            S1[FastAPI\nREST API]
-            S2[Python 3.11+\n비즈니스 로직]
-            S3[(SQLite\n스케줄 DB)]
-        end
-
-        subgraph HW["하드웨어 인터페이스 (GPIO)"]
-            direction LR
-            H1[HX711 드라이버\nGPIO 5/6]
-            H2[DHT22 드라이버\nGPIO 4]
-            H3[서보모터 PWM\nGPIO 18]
-            H4[팬/히터 제어\nGPIO 23]
-        end
-
-        S2 --> H1
-        S2 --> H2
-        S2 --> H3
-        S2 --> H4
-        S1 <--> S2
-        S2 <--> S3
+        AC1[알림 전송\nWindows 토스트 / 이메일]
+        AC2[급식기 제어\n시리얼 / IoT]
+        AC3[사운드 재생\n진정 음악]
     end
 
-    subgraph SENSORS["센서"]
-        SE1[로드셀\n무게 측정]
-        SE2[DHT22\n온습도 측정]
+    subgraph UI["대시보드 UI\nPyQt6 Windows 앱"]
+        direction LR
+        U1[실시간 카메라 피드\n+ AI 오버레이]
+        U2[행동 통계 차트\nmatplotlib]
+        U3[케어 이력 로그]
+        U4[수동 원격 제어\n급식 / 음악]
     end
 
-    subgraph ACTUATORS["액추에이터"]
-        AC1[서보모터\n사료 배출]
-        AC2[소형 히터/팬\n습도 조절]
+    subgraph DB["데이터 관리"]
+        D1[(SQLite\n케어 이력 / 스케줄)]
+        D2[이벤트 영상\nrecordings/]
     end
 
-    APP <-->|REST API| C1
-    APP <-->|MQTT| C2
-    C1 <--> S1
-    C2 <--> S2
-
-    H1 <-->|DOUT/SCK| SE1
-    H2 <-->|DATA| SE2
-    H3 -->|PWM 신호| AC1
-    H4 -->|ON/OFF| AC2
+    I1 --> P1
+    I2 --> P2
+    P1 --> A1 & A2
+    P2 --> A3
+    A1 & A2 & A3 --> CARE
+    CARE --> ACTION
+    CARE --> DB
+    ACTION --> UI
+    DB --> UI
 ```
 
-## 데이터 흐름 요약
+---
+
+## 알림 등급 흐름
+
+```mermaid
+flowchart LR
+    DETECT[행동/음성 감지] --> JUDGE{상태 판단}
+
+    JUDGE -->|정상| LOG[로그 기록]
+    JUDGE -->|주의| WARN[주의 알림\n+ 진정 음악 재생]
+    JUDGE -->|경고| ALERT[경고 알림\n+ 보호자 이메일]
+    JUDGE -->|긴급| URGENT[긴급 알림\n즉시 전송]
+
+    LOG --> DB2[(SQLite)]
+    WARN --> DB2
+    ALERT --> DB2
+    URGENT --> DB2
+```
+
+---
+
+## AI 분석 데이터 흐름
 
 ```mermaid
 sequenceDiagram
-    participant App as 스마트폰 앱
-    participant API as FastAPI (RPi)
-    participant Logic as 비즈니스 로직
-    participant DB as SQLite
-    participant HW as 하드웨어
+    participant CAM as 카메라/마이크
+    participant PRE as 전처리 모듈
+    participant AI as AI 분석 엔진
+    participant CARE as 케어 판단 로직
+    participant ACTION as 케어 실행
+    participant UI as 대시보드 UI
 
-    App->>API: 강아지 종 / 급여 스케줄 설정
-    API->>DB: 스케줄 저장
-    API->>Logic: 적정 사료량 계산
-
-    loop 급여 시간 도달 시
-        Logic->>HW: 서보모터 작동 (사료 배출)
-        HW->>Logic: 무게 센서(HX711) 피드백
-        Logic->>HW: 목표 무게 도달 시 서보 정지
+    loop 실시간 모니터링
+        CAM->>PRE: 영상/음성 스트림
+        PRE->>AI: 전처리된 프레임/오디오
+        AI->>CARE: 행동/감정/음성 분석 결과
+        CARE->>ACTION: 케어 액션 명령
+        CARE->>UI: 분석 결과 전달
+        ACTION->>UI: 실행 상태 업데이트
     end
 
-    loop 주기적 모니터링
-        HW->>Logic: DHT22 습도/온도 데이터
-        Logic->>HW: 기준 초과 시 팬/히터 ON/OFF
-        Logic->>API: 상태 데이터 전송
-        API->>App: MQTT / REST 실시간 알림
-    end
+    UI-->>CARE: 수동 제어 명령 (급식/음악)
 ```
